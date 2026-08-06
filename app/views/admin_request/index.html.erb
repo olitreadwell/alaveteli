@@ -10,11 +10,25 @@
 
 <%= form_tag({}, method: 'get', class: 'form form-search') do %>
   <div class="input-append">
-    <%= text_field_tag 'query', params[:query], size: 30, class: 'input-large search-query' %>
-    <%= submit_tag 'Search', class: 'btn' %>
+    <%= text_field_tag "query",
+    params[:query],
+    size: 30,
+    class: "input-large search-query" %>
+    <%= submit_tag "Search", class: "btn" %>
   </div>
 
-  <span class="help-inline">(substring search, titles only)</span>
+  <div>
+    <%= radio_button_tag "search_engine", "legacy", checked: "legacy" == @search_engine %>
+    <%= label_tag "search_engine",
+    "legacy engine: substring search in titles only",
+    class: "help-inline" %>
+    <%= radio_button_tag "search_engine",
+    "new",
+    checked: (@search_engine ? "new" == @search_engine : true) %>
+    <%= label_tag "search_engine",
+    "new engine: please report poor search results!",
+    class: "help-inline" %>
+  </div>
 <% end %>
 
 <%= render partial: 'some_requests', locals: { info_requests: @info_requests } %>

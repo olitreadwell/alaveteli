@@ -15,8 +15,16 @@ class AdminRequestController < AdminController
 
   def index
     @query = params[:query]
+    @search_engine = params[:search_engine]
+
     if @query
-      info_requests = InfoRequest.where(["lower(title) like lower('%'||?||'%')", @query])
+      if @search_engine == 'legacy'
+        info_requests = InfoRequest.where(
+          ["lower(title) like lower('%'||?||'%')", @query]
+        )
+      else
+        info_requests = InfoRequest.newsearch(@query, limit: 10000)
+      end
     else
       info_requests = InfoRequest
     end
