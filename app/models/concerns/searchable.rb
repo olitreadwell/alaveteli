@@ -254,14 +254,96 @@ module Searchable
     # This would normally not be run beyond the initial indexing of a
     # pre-existing database.
     def reindex_all(batch_size: 1000)
-      start = Time.zone.now
-      count = 0
-      indexable.find_each(batch_size: batch_size) do |record|
-        record.reindex
-        count += 1
+      opts = Searchable.class_variable_get(:@@searchable_models)[name]
+      return if opts.nil?
+      all_keys = (opts[:index] || {}).keys + (opts[:admin_index] || {}).keys
+      # if any of the index keys starts with a '.', we need to call ruby attributes,
+      # reindex instance one by one
+      if all_keys.any?(/^\./)
+        start = Time.zone.now
+        count = 0
+        indexable.find_each(batch_size: batch_size) do |record|
+          record.reindex
+          count += 1
+        end
+        elapsed = Time.zone.now - start
+        Rails.logger.info("Reindexed #{count} #{name} in #{elapsed} seconds")
+      else
+        reindex_all_inside_db
       end
-      elapsed = Time.zone.now - start
-      Rails.logger.info("Reindexed #{count} #{name} in #{elapsed} seconds")
+    end
+
+    # alternative implementation of reindex_all that works for models
+    # whose searchable.index and searchable.admin_index only contain
+    # SQL column names, and no ruby attributes. In that case, it is
+    # possible to send a single request to the db to generate the entire
+    # set of search_documents.
+    def reindex_all_inside_db
+      def partition_table_name(model)
+        "search_documents_#{model.downcase.gsub('::', '_')}"
+      end
+
+      def raw_content_query(idx_name)
+        opts = Searchable.class_variable_get(:@@searchable_models)[model_name.name]
+        if opts[idx_name].nil?
+          "''"
+        else
+          "concat(#{opts[idx_name].keys.join(', \' \', ')})"
+        end
+      end
+
+      def content_tsv_query(idx_name, language)
+        opts = Searchable.class_variable_get(:@@searchable_models)[model_name.name]
+        if opts[idx_name].nil?
+          "''"
+        else
+          bits = opts[idx_name].keys.map { |c|
+            "setweight(to_tsvector('#{language}'::regconfig, unaccent(coalesce(#{c}, ''))), '#{opts[idx_name][c]}')"
+          }
+          bits.join('||')
+        end
+      end
+
+      language = Searchable.lang_from_locale(
+        AlaveteliLocalization.default_locale
+      )
+      start = Time.now
+      query = <<-SQL
+        INSERT INTO "#{partition_table_name(model_name.name)}" (
+          "searchable_type",
+          "searchable_id",
+          "language",
+          "section_ref",
+          "raw_content",
+          "raw_admin_content",
+          "content_tsv",
+          "admin_content_tsv",
+          "created_at",
+          "updated_at"
+        )
+        SELECT
+          '#{model_name.name}',
+          id,
+          '#{language}',
+          '1',
+          #{raw_content_query(:index)},
+          #{raw_content_query(:admin_index)},
+          #{content_tsv_query(:index, language)},
+          #{content_tsv_query(:admin_index, language)},
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+          FROM #{table_name}
+      SQL
+
+      Rails.logger.debug(query)
+      ActiveRecord::Base.connection.exec_query(
+        "TRUNCATE #{partition_table_name(model_name.name)}"
+      )
+      ActiveRecord::Base.connection.exec_query(query)
+      t = Time.now - start
+      Rails.logger.info(
+        "Reindexed #{indexable.count} #{name} in #{t} seconds (in database)"
+      )
     end
   end
 
