@@ -9,6 +9,9 @@
 # @example
 #   User.where.not(banned_at: nil).search_scope('alice').order(:created_at)
 #
+
+require 'diff/lcs'
+
 module Searchable
   extend ActiveSupport::Concern
 
@@ -146,6 +149,47 @@ module Searchable
   # from indexing.
   def is_indexable?
     true
+  end
+
+  # diffs the unredacted and redacted versions of a text
+  # and returns a string of parts that were redacted. Storing this diff
+  # in the admin_index is a lot more efficient than keeping the entire
+  # text both in index and admin_index (plus corresponding GIN indexes
+  # in postgresql).
+  # For binary content (such as PDFs), emails are masked such that
+  # someone@domain.com becomes xxxxxxx@xxxxxx.xxx. The diff then produces
+  # 3 distinct strings: someone, domain and com, instead of a single email
+  # address. This makes it hard to use for search.
+  # It is possible to modify AlaveteliTextMasker.apply_binary_masks to get
+  # rid of @ and periods, but this in turn breaks certains features at
+  # display time.
+  # DO NOT USE THIS DIRECTLY, instead implement a method specific to your
+  # class that calls this with the appropriate strings.
+  # The output of this method is never safe for public display!
+  def diff_unredacted_and_redacted_content(unredacted_text, redacted_text)
+    sdiff = Diff::LCS.sdiff(
+      unredacted_text,
+      redacted_text
+    )
+    out = sdiff.reduce(['', nil]) do |acc, current|
+      prev = acc[1]
+      el = if current.action == '!'
+             current.old_element
+           elsif prev &&
+                 prev.action == '!' &&
+                 current.action == '='
+             if ['@', '.'].include?(current.old_element)
+               current.old_element
+             else
+               # add a space after each hunk
+               ' '
+             end
+           else
+             ''
+           end
+      [acc[0] + el, current]
+    end
+    out[0]
   end
 
   # Refresh the search index data about a model.
