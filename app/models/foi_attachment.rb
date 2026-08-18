@@ -44,6 +44,7 @@ class FoiAttachment < ApplicationRecord
   include Lockable
   include Maskable
   include Replaceable
+  include Searchable
 
   MissingError = Class.new(StandardError)
   MaskingError = Class.new(StandardError)
@@ -69,12 +70,38 @@ class FoiAttachment < ApplicationRecord
   admin_columns exclude: %i[url_part_number within_rfc822_subject hexdigest],
                 include: %i[redacted_filename display_filename metadata]
 
+  searchable(
+    index: {
+      ".body_to_text": "A"   # AttachmentToText.to_text 1x
+    },
+    admin_index: {
+      "filename": "A",
+      ".unredacted_diff_for_admin_indexing": "A", # AttachmentToText.to_text 2x (unred+red)
+      "prominence_reason": "A",
+      "replaced_reason": "A"
+    }
+  )
+
   BODY_MAX_TRIES = 3
   BODY_MAX_DELAY = 5
 
   def delete_cached_file!
     @cached_body = nil
     file.purge_later if file.attached?
+  end
+
+  def unredacted_content_for_indexing
+    AttachmentToText.
+      from_string(unmasked_body, content_type: content_type).
+      to_text
+  end
+
+  def unredacted_diff_for_admin_indexing
+    diff_unredacted_and_redacted_content(
+      unredacted_content_for_indexing,
+      body_to_text
+      # apply_masks(unredacted_content_for_indexing, content_type)
+    )
   end
 
   def body=(d)
@@ -103,7 +130,8 @@ class FoiAttachment < ApplicationRecord
     ensure_not_erased!
 
     begin
-      return file.download if locked? || masked?
+      @cached_body ||= file.download if locked? || masked?
+      return @cached_body
     rescue ActiveStorage::FileNotFoundError => ex
       # file isn't in storage and has gone missing, rescue to allow the masking
       # job to run and rebuild the stored file or even the whole attachment.
