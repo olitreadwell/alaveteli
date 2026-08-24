@@ -153,7 +153,14 @@ end
 
 describe '#mail_user' do
   let(:user) { FactoryBot.create(:user, locale: 'en') }
-  let(:info_request) { FactoryBot.create(:info_request, user: user) }
+  let(:public_body) { FactoryBot.create(:public_body, name: 'Test public body') }
+  let(:info_request) do
+    FactoryBot.create(:info_request,
+                      user: user,
+                      public_body: public_body,
+                      described_state: 'rejected',
+                      url_title: 'test_request')
+  end
   let(:incoming_message) do
     FactoryBot.create(:incoming_message, info_request: info_request)
   end
