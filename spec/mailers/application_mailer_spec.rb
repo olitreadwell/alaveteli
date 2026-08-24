@@ -150,3 +150,22 @@ RSpec.describe ApplicationMailer do
     end
   end
 end
+
+describe '#mail_user' do
+  let(:user) { FactoryBot.create(:user, locale: 'en') }
+  let(:info_request) { FactoryBot.create(:info_request, user: user) }
+  let(:incoming_message) do
+    FactoryBot.create(:incoming_message, info_request: info_request)
+  end
+
+  before { ActionMailer::Base.deliveries = [] }
+
+  it 'renders the body in the recipient locale' do
+    AlaveteliLocalization.with_locale('es') do
+      RequestMailer.new_response(info_request, incoming_message).deliver_now
+    end
+
+    expect(ActionMailer::Base.deliveries.last.body).
+      to include('To view the response, click on the link below.')
+  end
+end

@@ -49,7 +49,7 @@ class ApplicationMailer < ActionMailer::Base
       subject: AlaveteliLocalization.with_locale(locale) { subject.call }
     }
     default_opts.merge!(opts)
-    mail(default_opts)
+    AlaveteliLocalization.with_locale(locale) { mail(default_opts) }
   end
 
   def contact_for_user(user = nil)
