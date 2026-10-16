@@ -4,6 +4,19 @@ RSpec.describe AttachmentToText do
   describe '#to_text' do
     subject { described_class.new(attachment).to_text }
 
+    context 'when text extraction returns nil' do
+      let(:attachment) { FactoryBot.create(:body_text) }
+      let(:instance) { described_class.new(attachment) }
+
+      before do
+        allow(instance).to receive(:extract_text).and_return(nil)
+      end
+
+      it 'returns an empty string instead of raising' do
+        expect(instance.to_text).to eq('')
+      end
+    end
+
     # Currently handled
     # --------------------------------------------------------------------------
 
