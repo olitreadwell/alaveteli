@@ -69,7 +69,7 @@ class AttachmentToText
   end
 
   def to_text
-    text = extract_text(attachment.default_body, attachment.content_type)
+    text = extract_text(attachment.default_body, attachment.content_type) || ''
     convert_string_to_utf8(text, 'UTF-8').string
   end
 
