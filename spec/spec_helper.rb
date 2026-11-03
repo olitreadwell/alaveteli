@@ -107,7 +107,7 @@ RSpec.configure do |config|
 
   # Any test that messes with the locale needs to restore the state afterwards so that it
   # doesn't interfere with any subsequent tests. This is made more complicated by the
-  # ApplicationController#set_gettext_locale which sets the locale and so you may be setting
+  # SetLocale#set_gettext_locale which sets the locale and so you may be setting
   # the locale in your tests and not even realising it. So, let's make things easier for
   # ourselves and just always restore the locale for all tests.
   config.after(:each) do
@@ -132,6 +132,9 @@ RSpec.configure do |config|
 
   config.after(:each) do
     AlaveteliRateLimiter::IPRateLimiter.new(:signup).backend.destroy
+    # Reset controller `rate_limit` counters so attempts don't accumulate
+    # across examples that share the same test IP and emails.
+    ActionController::Base.cache_store.clear
   end
 end
 

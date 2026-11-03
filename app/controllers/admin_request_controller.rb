@@ -5,23 +5,67 @@
 # Email: hello@mysociety.org; WWW: http://www.mysociety.org/
 
 class AdminRequestController < AdminController
+  include Admin::Searchable
   include Admin::Sortable
 
   before_action :set_info_request, :check_info_request, only: %i[
     show edit update destroy move generate_upload_url hide
   ]
 
-  sortable default: :updated_at_desc, only: [:index]
+  sortable default: :updated_at_desc, relevance: :indexed_search?,
+           only: [:index, :index_with_content]
 
   def index
     @query = params[:query]
     @query = nil if @query == ''
-    @search_engine = params[:search_engine] || 'new'
 
-    if @search_engine == 'legacy'
-      index_legacy
+    info_requests = info_request_scope
+
+    if cannot? :admin, AlaveteliPro::Embargo
+      info_requests = info_requests.not_embargoed
+    end
+
+    @info_requests = measure_search(
+      sorted(
+        info_requests.includes(:embargo, :user, public_body: :translations)
+      ).paginate(page: params[:page], per_page: 100)
+    )
+  end
+
+  # list and search through info_requests with child items
+  # (messages and attachments)
+  def index_with_content
+    @query = params[:query]
+
+    hits = SearchDocument.
+      includes(
+        searchable: {
+          info_request: [
+            :embargo,
+            :user,
+            public_body: :translations
+          ]
+        }
+      ).paginate(page: params[:page], per_page: 100)
+
+    if @query
+      hits = hits.
+        hybrid_search(@query, admin_mode: true, limit: 1_000).
+        where(
+          searchable_type: [
+            :InfoRequest,
+            :IncomingMessage,
+            :OutgoingMessage,
+            :FoiAttachment
+          ]
+        )
+
+      if cannot? :admin, AlaveteliPro::Embargo
+        hits = hits.not_embargoed
+      end
+      @hits = measure_search(sorted(hits))
     else
-      index_new
+      @hits = sorted(hits.where(searchable_type: 'InfoRequest'))
     end
   end
 
@@ -210,42 +254,20 @@ class AdminRequestController < AdminController
 
   private
 
-  def index_legacy
-    if @query
-      info_requests = InfoRequest.where(["lower(title) like lower('%'||?||'%')", @query])
-    else
-      info_requests = InfoRequest
-    end
+  def info_request_scope
+    return InfoRequest unless @query
 
-    if cannot? :admin, AlaveteliPro::Embargo
-      info_requests = info_requests.not_embargoed
-    end
-
-    @info_requests =
-      info_requests.
-      order(sort_query).
-      paginate(page: params[:page], per_page: 100)
+    legacy_search? ? legacy_info_request_scope : indexed_info_request_scope
   end
 
-  def index_new
-    info_requests =
-      if @query
-        InfoRequest.search_scope(@query,
-                                 backend: :postgresql,
-                                 admin_mode: true)
-      else
-        InfoRequest
-      end
+  def legacy_info_request_scope
+    InfoRequest.where(
+      ["lower(title) like lower('%'||?||'%')", @query]
+    )
+  end
 
-    if cannot? :admin, AlaveteliPro::Embargo
-      info_requests = info_requests.not_embargoed
-    end
-
-    @info_requests =
-      info_requests.
-      includes(:embargo, :user, public_body: :translations).
-      order(sort_query).
-      paginate(page: params[:page], per_page: 100)
+  def indexed_info_request_scope
+    InfoRequest.search_scope(@query, backend: :postgresql, admin_mode: true)
   end
 
   def info_request_params

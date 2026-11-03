@@ -13,8 +13,11 @@ class ApplicationController < ActionController::Base
   class RouteNotFound < StandardError
   end
 
-  before_action :set_gettext_locale, :store_gettext_locale
-  before_action :redirect_gettext_locale, :collect_locales
+  MAX_RESULTS = 500
+  PER_PAGE = 25
+
+  # Included early so that the before_action runs before others
+  include SetLocale
 
   protect_from_forgery if: :authenticated?, with: :exception
   skip_before_action :verify_authenticity_token, unless: :authenticated?
@@ -34,6 +37,7 @@ class ApplicationController < ActionController::Base
   include AlaveteliPro::PostRedirectHandler
   include ReadOnly
   include RobotsHeaders
+  include CacheHeaders
 
   # NOTE: a filter stops the chain if it redirects or renders something
   before_action :html_response
@@ -48,60 +52,6 @@ class ApplicationController < ActionController::Base
 
   def set_vary_header
     response.headers['Vary'] = 'Cookie'
-  end
-
-  helper_method :anonymous_cache, :short_cache, :medium_cache, :long_cache
-  def anonymous_cache(time)
-    return if authenticated?
-
-    headers['Cache-Control'] = "max-age=#{time}, public"
-  end
-
-  def short_cache
-    anonymous_cache(60.seconds)
-  end
-
-  def medium_cache
-    anonymous_cache(60.minutes)
-  end
-
-  def long_cache
-    anonymous_cache(24.hours)
-  end
-
-  # This is an override of the method provided by gettext_i18n_rails.
-  # AlaveteliLocalization.set_session_locale explicitly sets I18n.locale,
-  # required due to the I18nProxy used in Rails to trigger the
-  # lookup_context and expire the template cache
-  def set_gettext_locale
-    params_locale = params[:locale]
-
-    if AlaveteliConfiguration.use_default_browser_language
-      browser_locales = request.env['HTTP_ACCEPT_LANGUAGE'].to_s.split(',')
-      browser_locales.map! { _1.split(';', 2)[0] }
-    end
-
-    AlaveteliLocalization.set_session_locale(
-      params_locale, cookies[:locale], *browser_locales,
-      AlaveteliLocalization.default_locale
-    )
-
-    # set response header informing the browser what language the page is in
-    response.headers['Content-Language'] = I18n.locale.to_s
-  end
-
-  def store_gettext_locale
-    # set the current stored locale to the requested_locale
-    locale = AlaveteliLocalization.locale
-    cookies[:locale] = locale
-
-    # ensure current user locale attribute is up-to-date
-    current_user.update_column(:locale, locale) if current_user
-  end
-
-  def redirect_gettext_locale
-    # redirect to remove locale params if present
-    redirect_to current_path_without_locale if params[:locale]
   end
 
   # Help work out which request causes RAM spike.
@@ -201,6 +151,7 @@ class ApplicationController < ActionController::Base
     session[:admin_name] = nil
     session[:change_password_post_redirect_id] = nil
     session[:post_redirect_token] = nil
+    session[:draft_profile_photo_id] = nil
     session[:ttl] = nil
     PendingTwoFactorSignIn.new(session).clear
   end
@@ -390,7 +341,7 @@ class ApplicationController < ActionController::Base
   end
 
   # Function for search
-  def perform_search(models, query, sortby, collapse, per_page = 25, this_page = nil)
+  def perform_search(models, query, sortby, collapse, per_page = PER_PAGE)
     @query = query
     @sortby = sortby
 
@@ -399,11 +350,33 @@ class ApplicationController < ActionController::Base
 
     # Perform the search
     @per_page = per_page
-    @page = this_page || get_search_page_from_params
+    @page = get_search_page_from_params
 
     Search.search(@query, models: models, sort_by: order,
                           sort_ascending: ascending,
                           collapse_by: collapse).
+      results(page: @page, per_page: @per_page)
+  end
+
+  def perform_track_search(track_thing)
+    order, = order_to_sort_by(track_thing.params[:feed_sortby])
+    offset = (get_search_page_from_params - 1) * PER_PAGE
+    track_thing.matches(sort_by: order, limit: PER_PAGE,
+                        offset: offset)
+  end
+
+  # Search a request's content and return one InfoRequest per match, for the
+  # request listings.
+  def perform_request_search(query, sortby)
+    @query = query
+    @sortby = sortby
+
+    order, ascending = order_to_sort_by(@sortby)
+
+    @per_page = PER_PAGE
+    @page = get_search_page_from_params
+
+    Search.request_search(@query, sort_by: order, sort_ascending: ascending).
       results(page: @page, per_page: @per_page)
   end
 
@@ -413,12 +386,11 @@ class ApplicationController < ActionController::Base
     page
   end
 
-  def typeahead_search(query, options)
+  def typeahead_search(query, model:, per_page: PER_PAGE, exclude_tags: [])
     @page = get_search_page_from_params
-    @per_page = options[:per_page] || 25
+    @per_page = per_page
 
-    Search.typeahead(query, model: options[:model],
-                            exclude_tags: options[:exclude_tags] || []).
+    Search.typeahead(query, model: model, exclude_tags: exclude_tags).
       results(page: @page, per_page: @per_page)
   end
 
@@ -469,20 +441,6 @@ class ApplicationController < ActionController::Base
   # Returns a Hash
   def sanitize_path(params)
     params.merge!(path: Rack::Utils.escape(params[:path])) if params.key?(:path)
-  end
-
-  # Collect the current and available locales for the locale switcher
-  #
-  # Returns a Hash
-  def collect_locales
-    @locales = { current: AlaveteliLocalization.locale, available: [] }
-    AlaveteliLocalization.available_locales.each do |possible_locale|
-      if possible_locale == AlaveteliLocalization.locale
-        @locales[:current] = possible_locale
-      else
-        @locales[:available] << possible_locale
-      end
-    end
   end
 
   # URL generating functions are needed by all controllers (for redirects),

@@ -12,7 +12,9 @@
         <label class="control-label" for="incoming_message_tag_string">Tag string</label>
 
         <div class="controls">
-          <%= text_field 'incoming_message', 'tag_string', class: 'span6' %>
+          <%= render 'admin/tag_field', object_name: 'incoming_message',
+                                        model_type: 'IncomingMessage',
+                                        html: { class: 'span6' } %>
         </div>
       </div>
   </fieldset>
@@ -33,6 +35,12 @@
 
       <div class="controls">
         <%= text_area 'incoming_message', 'prominence_reason', rows: 5, class: 'span6' %>
+
+        <span class="help-block">
+          This reason is shown in public. If left blank a generic reason of
+          "<%= ProminenceHelper::Base.default_prominence_reason %>" will be
+          shown.
+        </span>
       </div>
     </div>
   </fieldset>

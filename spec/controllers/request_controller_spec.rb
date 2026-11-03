@@ -62,12 +62,10 @@ RSpec.describe RequestController, "when listing recent requests" do
   end
 
   it 'sets title based on if tag does not match an request category' do
-    stub_search_results(items: [], total: 0)
     get :list, params: { view: 'all', tag: 'other' }
     expect(assigns[:title]).to eq('Found 0 requests tagged ‘other’')
 
-    request = FactoryBot.create(:info_request, tag_string: 'other')
-    stub_search_results(items: [request], total: 1)
+    FactoryBot.create(:info_request, tag_string: 'other')
     get :list, params: { view: 'all', tag: 'other' }
     expect(assigns[:title]).to eq('Found 1 request tagged ‘other’')
   end
@@ -100,22 +98,17 @@ RSpec.describe RequestController, "when showing one request" do
   context 'when the request has similar requests' do
     let(:info_request) { FactoryBot.create(:info_request) }
     let(:similar_requests) { double.as_null_object }
-    let(:similar_more) { double.as_null_object }
 
     before do
       allow_any_instance_of(InfoRequest).
         to receive(:similar_requests).
-        and_return([similar_requests, similar_more])
+        and_return([similar_requests])
 
       get :show, params: { url_title: info_request.url_title }
     end
 
     it 'assigns similar_requests' do
       expect(assigns[:similar_requests]).to eq(similar_requests)
-    end
-
-    it 'assigns similar_more' do
-      expect(assigns[:similar_more]).to eq(similar_more)
     end
   end
 
@@ -1726,8 +1719,7 @@ RSpec.describe RequestController, "when making a new request" do
     allow(@user).to receive(:exceeded_request_limits?).and_return(false)
     allow(@user).to receive(:locale).and_return("en")
     allow(@user).to receive(:login_token).and_return('abc')
-    allow(User).to receive(:find_by).with(id: @user.id, login_token: 'abc').
-      and_return(@user)
+    allow(User).to receive(:authenticate_from_session).and_return(@user)
     @body = FactoryBot.create(:public_body, name: 'Test Quango')
   end
 
@@ -1798,77 +1790,14 @@ RSpec.describe RequestController, "when doing type ahead searches" do
     expect(assigns[:query]).to eq('requested_from:dfh boring')
   end
 
-  it 'defaults to 25 results per page' do
+  it 'returns 3 results per page' do
     get :search_typeahead, params: { q: 'boring' }
-    expect(assigns[:per_page]).to eq(25)
+    expect(assigns[:per_page]).to eq(3)
   end
 
-  it 'can limit the number of searches returned' do
-    event = info_request_events(:useless_outgoing_message_event)
-    stub_typeahead_results(items: [event], total: 1)
-    get :search_typeahead, params: { q: 'boring', per_page: '1' }
-    expect(assigns[:per_page]).to eq(1)
-    expect(assigns[:request_results].results.size).to eq(1)
-  end
-end
-
-RSpec.describe RequestController, "when showing similar requests" do
-  let(:badger_request) { info_requests(:badger_request) }
-
-  it "renders the 'similar' template" do
-    get :similar, params: {
-                    url_title: info_requests(:badger_request).url_title
-                  }
-    expect(response).to render_template("request/similar")
-  end
-
-  it 'assigns the request' do
-    get :similar, params: {
-                    url_title: info_requests(:badger_request).url_title
-                  }
-    expect(assigns[:info_request]).to eq(info_requests(:badger_request))
-  end
-
-  it "assigns a results object with similar requests" do
-    expected = InfoRequest.all.reject { |request| request == badger_request }
-    events = expected.map { |r| r.info_request_events.first }
-    stub_similar_requests(items: events, total: events.size)
-
-    get :similar, params: { url_title: badger_request.url_title }
-
-    results = assigns[:results].results
-    expect(results.map { |result| result[:model].info_request })
-      .to match_array(expected)
-  end
-
-  it "raises ActiveRecord::RecordNotFound for non-existent paths" do
-    expect {
-      get :similar, params: {
-        url_title: "there_is_really_no_such_path_owNAFkHR"
-      }
-    }.to raise_error(ActiveRecord::RecordNotFound)
-  end
-
-  it "raises ActiveRecord::RecordNotFound for pages beyond the last
-      page we want to show" do
-    expect {
-      get :similar, params: {
-        url_title: badger_request.url_title,
-        page: 100
-      }
-    }.to raise_error(ActiveRecord::RecordNotFound)
-  end
-
-  it 'raises ActiveRecord::RecordNotFound if the request is embargoed' do
-    badger_request.create_embargo(publish_at: Time.zone.now + 3.days)
-    expect {
-      get :similar, params: { url_title: badger_request.url_title }
-    }.to raise_error(ActiveRecord::RecordNotFound)
-  end
-
-  it 'adds noindex, nofollow header' do
-    get :similar, params: { url_title: badger_request.url_title }
-    expect(response.headers['X-Robots-Tag']).to eq 'noindex, nofollow'
+  it 'ignores the per_page parameter' do
+    get :search_typeahead, params: { q: 'boring', per_page: '1000' }
+    expect(assigns[:per_page]).to eq(3)
   end
 end
 
@@ -1942,6 +1871,28 @@ end
 
 RSpec.describe RequestController do
   describe 'GET #download_entire_request' do
+    context 'when a censor rule redacts an attachment', feature: :redaction_tracking do
+      let(:info_request) do
+        FactoryBot.create(:info_request_with_html_attachment)
+      end
+
+      let!(:censor_rule) do
+        info_request.censor_rules.create!(
+          text: 'dull', replacement: 'REDACTED',
+          last_edit_editor: 'unknown', last_edit_comment: 'none'
+        )
+      end
+
+      it 'records the redaction against the body written to the zip' do
+        sign_in info_request.user
+        get :download_entire_request,
+            params: { url_title: info_request.url_title }
+
+        expect(censor_rule.redactions.pluck(:redacted_attribute)).
+          to include('default_body')
+      end
+    end
+
     context 'when the request is embargoed' do
       let(:user) { FactoryBot.create(:user) }
       let(:pro_user) { FactoryBot.create(:pro_user) }
