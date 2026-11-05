@@ -28,6 +28,24 @@ RSpec.describe RequestController, "when listing recent requests" do
     expect(response).to render_template('list')
   end
 
+  context 'when rendering views' do
+    render_views
+
+    it 'links to the canonical URL for successful requests without a tag' do
+      get :list, params: { view: 'all', page: 2 }
+      expect(response.body).to include(
+        '<link rel="canonical" href="http://test.host/list/successful">'
+      )
+    end
+
+    it 'links to the canonical URL for a tag' do
+      get :list, params: { tag: 'foo', view: 'successful', page: 2 }
+      expect(response.body).to include(
+        '<link rel="canonical" href="http://test.host/list/foo">'
+      )
+    end
+  end
+
   it "should return 404 for pages we don't want to serve up" do
     expect {
       get :list, params: { view: 'all', page: 100 }
@@ -87,6 +105,15 @@ RSpec.describe RequestController, "when showing one request" do
   it "should assign the request" do
     get :show, params: { url_title: 'why_do_you_have_such_a_fancy_dog' }
     expect(assigns[:info_request]).to eq(info_requests(:fancy_dog_request))
+  end
+
+  it 'links to the canonical URL without params' do
+    get :show, params: { url_title: 'why_do_you_have_such_a_fancy_dog',
+                         unfold: 1 }
+    expect(response.body).to include(
+      '<link rel="canonical" ' \
+      'href="http://test.host/request/why_do_you_have_such_a_fancy_dog">'
+    )
   end
 
   it 'should return a 404 for GET requests to a malformed request URL' do
@@ -538,8 +565,7 @@ end
 RSpec.describe RequestController, 'when handling prominence' do
   def expect_hidden(hidden_template)
     expect(response.media_type).to eq('text/html')
-    expect(response).to render_template(hidden_template)
-    expect(response.code).to eq('403')
+    expect(response).to render_hidden(hidden_template)
   end
 
   let(:info_request) do
@@ -638,6 +664,17 @@ RSpec.describe RequestController, "when searching for an authority" do
     expect(assigns[:request_results].results.size).to eq(1)
     expect(assigns[:request_results].results[0][:model].name).
       to eq(body.name)
+  end
+
+  context 'when rendering views' do
+    render_views
+
+    it 'links to the canonical URL without params' do
+      get :select_authority, params: { query: 'Quango', page: 2 }
+      expect(response.body).to include(
+        '<link rel="canonical" href="http://test.host/select_authority">'
+      )
+    end
   end
 
   it "remembers the search params" do
@@ -1839,14 +1876,9 @@ RSpec.describe RequestController do
         info_request.save!
       end
 
-      it 'returns a 403' do
+      it 'renders hidden' do
         get :details, params: { url_title: info_request.url_title }
-        expect(response.code).to eq("403")
-      end
-
-      it 'shows the hidden request template' do
-        get :details, params: { url_title: info_request.url_title }
-        expect(response).to render_template("request/hidden")
+        expect(response).to render_hidden
       end
     end
 

@@ -2,6 +2,13 @@
 
 ## Highlighted Features
 
+* Ability to edit and filter by citation type in admin list (Gareth Rees)
+* Stop search engines indexing user profile pages (Gareth Rees)
+* Add canonical URLs to pages that can be reached with various URL params, so
+  that search engines consolidate duplicate pages (Gareth Rees)
+* Remove utm params from similar request list (Gareth Rees)
+* Switch from the unmaintained `activejob-uniqueness` gem to its
+  `activejob-unique` fork, which supports Rails 8.1 (Graeme Porteous)
 * Switch locale by submitting a form rather than following a link to stop
   crawlers requesting every page in every locale (Gareth Rees)
 * Stop the `locale` param and locale path prefixes switching locale (Gareth
@@ -17,6 +24,8 @@
   resuming where an interrupted run stopped (Graeme Porteous)
 * Fix errors and slow searches caused by invalid page sizes (Graeme Porteous)
 * Fix search and request excerpts missing public attachments (Graeme Porteous)
+* Add trigram index on public bodies and users to back exact search (Laurent
+  Savaete)
 * Update request listings to work via the request itself; filtering by status,
   date and tag in the database rather than the search index (Graeme Porteous)
 * Fix command injection in the admin holiday feed import, and only fetch
@@ -153,6 +162,10 @@
   before upgrading Alaveteli.
 
   See: https://www.postgresql.org/docs/15/upgrading.html
+
+* This release switches the search engine from Xapian to PostgreSQL. Please read
+  through [UPGRADING_TO_POSTGRES_SEARCH.md](UPGRADING_TO_POSTGRES_SEARCH.md)
+  before starting the upgrade.
 
 * _Required:_ This release now allows responses to be received from any source,
   1. Postfix/Exim `./script/mailin` pipe,
