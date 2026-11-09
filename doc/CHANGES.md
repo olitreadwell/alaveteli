@@ -2,6 +2,10 @@
 
 ## Highlighted Features
 
+* Fix slow request listings with date filters, and stop counting above the
+  results limit (Graeme Porteous)
+* Fix hidden comments, and content on hidden messages or requests, showing in
+  public search (Graeme Porteous)
 * Ability to edit and filter by citation type in admin list (Gareth Rees)
 * Stop search engines indexing user profile pages (Gareth Rees)
 * Add canonical URLs to pages that can be reached with various URL params, so
