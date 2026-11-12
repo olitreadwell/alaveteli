@@ -19,7 +19,8 @@ RSpec.describe MailServerLog do
     before :each do
       allow(AlaveteliConfiguration).to receive(:incoming_email_domain).and_return("example.com")
       allow(AlaveteliConfiguration).to receive(:incoming_email_prefix).and_return('foi+')
-      allow(File).to receive_message_chain(:stat, :mtime).and_return(DateTime.new(2012, 10, 10))
+      allow(File).to receive_message_chain(:stat, :mtime).
+        and_return(Time.utc(2012, 10, 10))
     end
 
     let(:text_log_path) { file_fixture_name('exim-mainlog-2012-10-10') }
@@ -53,7 +54,8 @@ RSpec.describe MailServerLog do
       expect(File).to receive(:open).with(text_log_path, 'r').twice.and_call_original
       expect(InfoRequest).to receive(:find_by_incoming_email).with("foi+request-1234@example.com").exactly(4).times.and_return(ir)
       MailServerLog.load_file(text_log_path)
-      allow(File).to receive_message_chain(:stat, :mtime).and_return(DateTime.new(2012, 10, 11))
+      allow(File).to receive_message_chain(:stat, :mtime).
+        and_return(Time.utc(2012, 10, 11))
       MailServerLog.load_file(text_log_path)
     end
 
@@ -63,7 +65,8 @@ RSpec.describe MailServerLog do
       MailServerLog.load_file(text_log_path)
       expect(ir.mail_server_logs.count).to eq(2)
 
-      allow(File).to receive_message_chain(:stat, :mtime).and_return(DateTime.new(2012, 10, 11))
+      allow(File).to receive_message_chain(:stat, :mtime).
+        and_return(Time.utc(2012, 10, 11))
       MailServerLog.load_file(text_log_path)
       expect(ir.mail_server_logs.count).to eq(2)
     end
@@ -94,6 +97,44 @@ RSpec.describe MailServerLog do
         MailServerLog.load_file(text_log_path)
         expect(ir.mail_server_logs[0].attributes).
           to_not include(['delivery_status'])
+      end
+    end
+
+    context "when the file mtime has sub-microsecond precision" do
+      let(:mtime) { Time.at(1_349_827_200, 123_456_789, :nsec) }
+
+      before do
+        allow(File).to receive_message_chain(:stat, :mtime).and_return(mtime)
+        allow(InfoRequest).to receive(:find_by_incoming_email).
+          with("foi+request-1234@example.com").and_return(ir)
+      end
+
+      it "doesn't load the file again if it's unchanged" do
+        MailServerLog.load_file(text_log_path)
+
+        expect { MailServerLog.load_file(text_log_path) }.
+          not_to(change { ir.mail_server_logs.pluck(:id) })
+      end
+    end
+
+    context "when the file is loaded again", :reindex_inline do
+      let(:documents) do
+        SearchDocument.where(searchable_type: 'MailServerLog')
+      end
+
+      before do
+        allow(InfoRequest).to receive(:find_by_incoming_email).
+          with("foi+request-1234@example.com").and_return(ir)
+      end
+
+      it "keeps one search document for each log line" do
+        MailServerLog.load_file(text_log_path)
+        allow(File).to receive_message_chain(:stat, :mtime).
+          and_return(Time.utc(2012, 10, 11))
+        MailServerLog.load_file(text_log_path)
+
+        expect(documents.pluck(:searchable_id)).
+          to match_array(ir.mail_server_logs.pluck(:id))
       end
     end
   end
@@ -546,7 +587,6 @@ RSpec.describe MailServerLog do
     it 'indexes logs and finds PII' do
       log = FactoryBot.create(:mail_server_log, line: "Nov  2 20:13:47 servername postfix/smtp[28805]: 12345ABCDE: to=<admin@someplace.fr>, relay=mx1.example.com[1.2.3.4]:25, delay=12, delays=0.05/0.02/0.83/11, dsn=2.0.0, status=sent (250 OK id=1iQidI-000L38-SB)")
       expect(log.search_documents.count).to eq(1)
-      puts(log.search_documents.first.inspect)
       expect(
         MailServerLog.search_scope('admin@someplace.fr', backend: :postgresql)
       ).to eq([])
@@ -559,7 +599,6 @@ RSpec.describe MailServerLog do
       info_request = FactoryBot.create(:embargoed_request)
       log = FactoryBot.create(:mail_server_log, info_request: info_request, line: "Nov  2 20:13:47 servername postfix/smtp[28805]: 12345ABCDE: to=<admin@someplace.fr>, relay=mx1.example.com[1.2.3.4]:25, delay=12, delays=0.05/0.02/0.83/11, dsn=2.0.0, status=sent (250 OK id=1iQidI-000L38-SB)")
       expect(log.search_documents.count).to eq(1)
-      puts(log.search_documents.first.inspect)
       expect(
         MailServerLog.
           search_scope('admin@someplace.fr', admin_mode: true, backend: :postgresql)

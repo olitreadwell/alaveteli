@@ -2,6 +2,9 @@
 
 ## Highlighted Features
 
+* Fix orphaned search documents when mail server logs are loaded again
+  (Graeme Porteous)
+* Fix mail server logs loading again every hour when unchanged (Graeme Porteous)
 * Fix slow request listings with date filters, and stop counting above the
   results limit (Graeme Porteous)
 * Fix hidden comments, and content on hidden messages or requests, showing in
@@ -50,8 +53,10 @@
 * Prevent closed users logging in from secondary authentication routes (Gareth
   Rees)
 * Update PostgreSQL search documents in a background job (Graeme Porteous)
+* Add ability to erase an IncomingMessage (Laurent Savaete)
 * Add prominence check to public search indexing (Graeme Porteous)
 * Several accessibility improvements (Lucas Cumsille Montesinos)
+* Add ability to erase an outgoing message (Laurent Savaete)
 * Track when CensorRules actually redact content from Redactable records (Gareth
   Rees)
 * Fix an endless loop if there is issues masking attachment (Graeme Porteous)
