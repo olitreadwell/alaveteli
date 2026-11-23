@@ -91,10 +91,11 @@ gem 'acts_as_versioned', mysociety: 'acts_as_versioned', ref: '13e928b'
 gem 'active_model_otp'
 gem 'activejob-unique', '~> 0.5.1'
 gem 'bcrypt', '~> 3.1.22'
-gem 'cancancan', '~> 3.7.0'
+gem 'bootsnap', '~> 1.26.1', require: false
+gem 'cancancan', '~> 3.7.1'
 gem 'charlock_holmes', '~> 0.7.9'
 gem 'compare-xml', '~> 1.0'
-gem 'dalli', '~> 5.3.2'
+gem 'dalli', '~> 5.3.4'
 gem 'exception_notification', '~> 5.0.1'
 gem 'fancybox-rails', '~> 0.3.0'
 gem 'friendly_id', '~> 5.7.0'
@@ -113,8 +114,8 @@ gem 'maxmind-db', '~> 1.5.0'
 gem 'marcel', '~> 1.2'
 gem 'nokogiri', '~> 1.19.4'
 gem 'open4', '~> 1.3.0'
-gem 'puma', '~> 8.0.2'
-gem 'rack', '~> 2.2.25'
+gem 'puma', '~> 8.1.2'
+gem 'rack', '~> 2.2.26'
 gem 'rack-utf8_sanitizer', '~> 1.11.1'
 gem 'recaptcha', '~> 5.21.2', require: 'recaptcha/rails'
 gem 'matrix', '~> 0.4.3'
@@ -191,7 +192,7 @@ gem "ollama-ai", "~> 1.3.0"
 
 group :test do
   gem 'fivemat', '~> 1.3.7'
-  gem 'webmock', '~> 3.34.0'
+  gem 'webmock', '~> 3.35.0'
   gem 'simplecov', '~> 1.3.2'
   gem 'simplecov-lcov', '~> 0.9.0'
   gem 'capybara', '~> 3.40.0'
@@ -211,7 +212,7 @@ group :development do
   gem 'annotaterb', '~> 4.26.0'
   gem 'launchy', '< 3.2.0'
   gem 'web-console', '>= 3.3.0'
-  gem 'rubocop', '~> 1.92.2', require: false
+  gem 'rubocop', '~> 1.92.3', require: false
   gem 'rubocop-performance', require: false
   gem 'rubocop-rails', require: false
 end
